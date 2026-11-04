@@ -83,3 +83,4 @@ parse_medicam_files <- function(folder_path = "data/medicam", liste_atc) {
   
   return(result_medoc)
 }
+

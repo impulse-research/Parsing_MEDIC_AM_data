@@ -156,8 +156,8 @@ add_dosage_info <- function(data, ref_cip, strict = TRUE) {
   
   return(res)
 }
-a <- ref_clean %>% 
-  filter(is.na(nb_unites)| is.na(unit_dose)| is.na(dose_unit))
+# a <- ref_clean %>% 
+#   filter(is.na(nb_unites)| is.na(unit_dose)| is.na(dose_unit))
   
 
 

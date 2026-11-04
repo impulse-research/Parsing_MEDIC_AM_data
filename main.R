@@ -6,6 +6,11 @@ liste_atc <- c(
   "N04BA02","N03AG01","N04BA03","J01CA04","J01CR02"
   )
 
+# ajouter parametre pour atc/cip complémentaire
+# Quetiapine , prednisolone , divazlproate de sodium
+
+# normalisation boite par moi
+# plot avec période pénurie
 
 
 
@@ -29,12 +34,13 @@ result_medoc_dosage <- add_dosage_info(
 
 res_trimestre_cip <- aggregate_medicam(
   data = result_medoc, 
-  freq = "trimestre", 
-  by_cip = TRUE
+  freq = "mois",#"trimestre", 
+  by_cip = FALSE
 )
 
 
-write.csv(result_medoc,"outpout/donne_detect_penurie_lola.csv")
+
+write.csv(res_trimestre_cip,"outpout/donne_detect_penurie_lola.csv",row.names = FALSE)
 
 
 # 1. Préparation des données (création d'une vraie date pour l'axe des x)
