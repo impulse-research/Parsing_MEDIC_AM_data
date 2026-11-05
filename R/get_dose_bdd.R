@@ -69,6 +69,16 @@ GET_dose_bdd <- function(rerun = TRUE, bdd_path = "data/fichier_intermediaire/ba
   }
   
   # 4. Lecture du fichier mis en cache
-  ref_cip_local <- read.csv(bdd_path)
+  # Les codes sont lus en texte : sinon read.csv les convertit en numérique
+  # (zéros de tête perdus, risque d'écriture scientifique)
+  ref_cip_local <- read.csv(
+    bdd_path,
+    colClasses = c(
+      cip13              = "character",
+      presentation_cip13 = "character",
+      presentation_cip7  = "character",
+      cis                = "character"
+    )
+  )
   return(ref_cip_local)
 }
