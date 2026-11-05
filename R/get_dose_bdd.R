@@ -150,6 +150,7 @@ GET_dose_bdd <- function(rerun = TRUE,
 #'
 #' @return list(donnees, dose, ddd) de tibbles, CIP13 en texte
 read_theriaque <- function(path) {
+
   if (!file.exists(path)) stop("Fichier Thériaque introuvable : ", path)
 
   sheets       <- readxl::excel_sheets(path)
@@ -179,7 +180,7 @@ read_theriaque <- function(path) {
     ddd_raw        = .get_col(don, "^ddd$", s_don, required = FALSE),
     voie_ddd       = .get_col(don, "^voie", s_don, required = FALSE),
     nb_unites      = suppressWarnings(as.numeric(str_replace(
-                       .get_col(don, "^nb_unite", s_don), ",", "."))),
+                       .get_col(don, "^(nombre_d_?|nb_?)unite", s_don), ",", "."))),
     nature_unite   = .get_col(don, "^nature", s_don, required = FALSE)
   ) %>%
     filter(!is.na(cip13)) %>%

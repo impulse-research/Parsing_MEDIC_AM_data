@@ -10,12 +10,16 @@
 #' @param data Sortie de `parse_medicam_files()`.
 #' @param ref_cip Sortie de `GET_dose_bdd()` (data.frame BDPM ou list(bdpm, theriaque)).
 #' @param tolerance Écart relatif toléré sur le dosage (défaut 1 %).
+#' @param exclude_forme_pharma,exclude_label_regex Exclusion des topiques, comme `add_dosage_info()`.
 #'
 #' @return Un tibble des libellés en écart (un par CIP × libellé), trié par nombre
 #'   de boîtes. Le résumé est affiché dans la console.
-check_label_parser <- function(data, ref_cip, tolerance = 0.01) {
+check_label_parser <- function(data, ref_cip, tolerance = 0.01,
+                               exclude_forme_pharma = .default_topiques,
+                               exclude_label_regex = .default_topiques_label) {
 
   refs <- .split_ref(ref_cip)
+  data <- .data_sans_topiques(data, refs, exclude_forme_pharma, exclude_label_regex)
   cips <- unique(na.omit(str_extract(as.character(data$cip13), "\\d{13}")))
 
   ref_dose <- build_ref_dosage(refs$bdpm, cips = cips) %>%
@@ -86,12 +90,16 @@ check_label_parser <- function(data, ref_cip, tolerance = 0.01) {
 #' @param ref_cip Sortie de `GET_dose_bdd()`.
 #' @param correction_path Table de correction manuelle.
 #' @param tolerance Écart relatif toléré sur la dose par boîte (défaut 5 %).
+#' @param exclude_forme_pharma,exclude_label_regex Exclusion des topiques, comme `add_dosage_info()`.
 #'
 #' @return Un tibble des conflits (un par CIP × paire de sources), trié par nombre de boîtes.
 check_ref_conflicts <- function(data, ref_cip, correction_path = "data/correction_dosage.csv",
-                                tolerance = 0.05) {
+                                tolerance = 0.05,
+                                exclude_forme_pharma = .default_topiques,
+                                exclude_label_regex = .default_topiques_label) {
 
   refs <- .split_ref(ref_cip)
+  data <- .data_sans_topiques(data, refs, exclude_forme_pharma, exclude_label_regex)
   data_clean <- data %>% mutate(cip13_clean = str_extract(as.character(cip13), "\\d{13}"))
   cips <- unique(na.omit(data_clean$cip13_clean))
 
@@ -101,7 +109,8 @@ check_ref_conflicts <- function(data, ref_cip, correction_path = "data/correctio
               nb_boite_total = sum(nb_boite, na.rm = TRUE), .groups = "drop")
 
   # Une ligne par CIP et par source : count, unité, dose/boîte (+ variante SA pour la BDPM)
-  bdpm <- build_ref_dosage(refs$bdpm, cips = cips) %>%
+  bdpm_full <- build_ref_dosage(refs$bdpm, cips = cips)
+  bdpm <- bdpm_full %>%
     transmute(cip13_clean, source = "bdpm", count = unit_count_per_box, unit = dose_unit,
               box = unit_dose * unit_count_per_box,
               box_alt = if_else(coalesce(dose_unit_sa == dose_unit, FALSE),
@@ -116,7 +125,7 @@ check_ref_conflicts <- function(data, ref_cip, correction_path = "data/correctio
     filter(!is.na(conc_per_ml)) %>%
     distinct(cip13_clean, .keep_all = TRUE) %>%
     select(cip13_clean, conc_label = conc_per_ml, conc_unit_label = dose_unit)
-  conc_bdpm <- build_ref_dosage(refs$bdpm, cips = cips) %>%
+  conc_bdpm <- bdpm_full %>%
     select(cip13_clean, conc_ref = conc_per_ml, conc_unit_ref = conc_unit)
 
   manuel <- .read_correction(correction_path) %>%
@@ -169,4 +178,16 @@ check_ref_conflicts <- function(data, ref_cip, correction_path = "data/correctio
               count_a, count_b, unit_a, unit_b, dose_box_a = box_a, dose_box_b = box_b,
               ecart_pct = round(100 * ecart_box, 1)) %>%
     arrange(desc(nb_boite_total))
+}
+
+
+# Retire les CIP topiques de `data` (même règle que add_dosage_info())
+.data_sans_topiques <- function(data, refs, exclude_forme_pharma, exclude_label_regex) {
+  data_clean <- data %>% mutate(cip13_clean = str_extract(as.character(cip13), "\\d{13}"))
+  cips <- unique(na.omit(data_clean$cip13_clean))
+  excl <- .cips_exclus(data_clean,
+                       build_ref_dosage(refs$bdpm, cips = cips),
+                       build_theriaque_dosage(refs$theriaque, cips = cips),
+                       exclude_forme_pharma, exclude_label_regex)
+  data_clean %>% filter(!cip13_clean %in% excl$cip13_clean) %>% select(-cip13_clean)
 }

@@ -1,1 +1,7 @@
 cip13,unit_count_per_box,unit_dose,dose_unit,volume_ml,commentaire
+# Lignes commencant par # ignorees. Retirer le # apres verification (RCP / notice).
+# volume_ml seul : dose = concentration (BDPM ou libelle) x volume ; unit_dose + dose_unit : valeur imposee.
+# 3400939033174,?,1125,mg,,AMOX/AC CLAV SUN 1 G/125 MG ADU : nombre de sachets a verifier
+# 3400932329007,1,,,?,GRAMIDIL 250 MG/5 ML : volume du flacon a verifier
+# 3400930239711,?,?,mg,,VALSARTAN/HCTZ ZENTIVA LAB 160 MG/1 : libelle tronque (160/12.5 ou 160/25 ; 30 ou 90)
+# 3400935793027,1,,,30,AMOX/AC CLAV GNR NR 1/5.13 G : 30 ml a confirmer (comparer aux autres NR resolus par Theriaque)

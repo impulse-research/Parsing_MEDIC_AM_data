@@ -182,13 +182,22 @@ parse_label <- function(label) {
     }
   }
 
-  # A5. Volume isolé : "BUV 54ML", "60 ML EN FLACON", "FL 40ML", "COLLYRE FL 5ML"
-  #     (hors dénominateur de concentration "/5ML")
+  # A5. Volume explicite "60 ML EN FLACON"
+  if (is.na(volume_ml)) {
+    vol <- str_match(x, "(\\d+(?:\\.\\d+)?)\\s*ML\\s+EN\\s+FLACON")[1, 2]
+    if (!is.na(vol)) volume_ml <- as.numeric(vol)
+  }
+
+  # A6. Volume isolé : "BUV 40ML", "FL 40ML" (hors dénominateur de concentration "/5ML")
+  #     Non utilisé pour les poudres à reconstituer ni les dosages "/5ML" (voir B) :
+  #     "BUV 54ML" y désigne le godet doseur, pas le volume de suspension
+  volume_isole <- NA_real_
   if (is.na(volume_ml)) {
     x_sans_conc <- str_remove_all(x, "/\\s*\\d*(?:\\.\\d+)?\\s*ML(?![A-Z])")
     vol <- str_match(x_sans_conc, "(\\d+(?:\\.\\d+)?)\\s*ML(?![A-Z])")[1, 2]
-    if (!is.na(vol)) volume_ml <- as.numeric(vol)
+    if (!is.na(vol)) volume_isole <- as.numeric(vol)
   }
+  poudre <- str_detect(x, "\\b(?:PDR|PDRE|POUDRE)\\b")
 
   # --- B. DOSAGE ---
   if (dosage_tronque) return(out)
@@ -201,9 +210,21 @@ parse_label <- function(label) {
   dose <- .parse_dose_chain(chains[1])
   if (is.na(dose$value)) return(out)
 
+  # Volume isolé retenu seulement hors poudre et pour une concentration "/ML" (ex. 200 MG/ML)
+  if (is.na(volume_ml) && !is.na(volume_isole) && !poudre && coalesce(dose$per_ml, 1) < 2) {
+    volume_ml <- volume_isole
+  }
+
   # Pourcentage -> concentration en mg/ml (1 % = 10 mg/ml) si un volume est connu
   if (dose$unit == "%" && !is.na(volume_ml)) {
     dose <- list(value = dose$value * 10, unit = "mg", per_ml = 1)
+  }
+
+  # Poudre + solvant ("CLAMOXYL 500MG/5ML PDR ET SOL INJ IM") : le "/5ML" est le volume
+  # de solvant, pas une concentration -> dose par flacon
+  if (!is.na(dose$per_ml) &&
+      str_detect(x, "\\b(?:PDR|PDRE|POUDRE|LYOPH[A-Z]*)\\s*(?:ET|\\+)\\s*(?:SOL|SOLV|SOLVANT)\\b")) {
+    dose$per_ml <- NA_real_
   }
 
   # Suspension / sirop sans "/ML" dans le libellé : le dosage est une concentration
@@ -359,9 +380,12 @@ build_ref_dosage <- function(ref_cip, cips = NULL) {
       # "100 g de pommade" -> 100
       ref_g = as.numeric(str_replace(str_extract(ref_norm, "\\d+(?:[.,]\\d+)?(?=\\s*g\\b)"), ",", ".")),
       # Dosage exprimé par unité / contenant ("un comprimé", "une ampoule", "un sachet")
-      ref_per_unit = str_detect(coalesce(ref_norm, ""),
-        "comprim|gélule|gelule|capsule|sachet|ampoule|flacon|seringue|poche|récipient|recipient|stylo|suppositoire|ovule|lyophilisat|dispositif|patch|unidose|pastille|tube") &
-        !str_detect(coalesce(ref_norm, ""), "cuill|goutte|pulvéris|pulveris|mesure")
+      # (la seringue n'est une unité que pour les injectables : voir `base`)
+      ref_per_unit_mot = str_detect(coalesce(ref_norm, ""),
+        "comprim|gélule|gelule|capsule|sachet|ampoule|flacon|poche|récipient|recipient|stylo|suppositoire|ovule|lyophilisat|dispositif|patch|unidose|pastille|tube") &
+        !str_detect(coalesce(ref_norm, ""), "cuill|goutte|pulvéris|pulveris|mesure|pipette"),
+      ref_seringue = str_detect(coalesce(ref_norm, ""), "seringue") &
+        !str_detect(coalesce(ref_norm, ""), "cuill|goutte|mesure|pipette|graduée|graduee|orale")
     )
 
   # 3. Conditionnement (une ligne par CIP)
@@ -385,7 +409,15 @@ build_ref_dosage <- function(ref_cip, cips = NULL) {
       # "30 comprimé(s)", "5 ampoule(s)"
       n_direct  = as.numeric(str_extract(libelle, paste0("\\d+(?=\\s*(?:", mots_unites, "))"))),
       n_contenants = as.numeric(str_extract(libelle, paste0("\\d+(?=\\s*(?:", mots_contenants, "))"))),
-      volume_ml = num(str_extract(libelle, "\\d+(?:[.,]\\d+)?(?=\\s*ml\\b)")),
+      # Volume du contenant : les volumes des dispositifs doseurs ne comptent pas
+      # ("seringue pour administration orale 5 mL", "godet doseur gradué à 54 mL") ;
+      # "12 cuillères-mesure de 5 ml" -> 12 × 5 = 60 ml
+      m_cuill   = str_match(libelle, "(\\d+)\\s+cuill[eè]res?[- ]?mesures?\\s+de\\s+(\\d+(?:[.,]\\d+)?)\\s*ml\\b"),
+      volume_cuilleres = as.numeric(m_cuill[, 2]) * num(m_cuill[, 3]),
+      libelle_sans_doseur = str_remove_all(libelle,
+        "(?:seringue|cuill[eè]re|godet|gobelet|pipette|compte-gouttes|doseur|dosette|mesure)[^,;+]{0,60}?\\d+(?:[.,]\\d+)?\\s*ml\\b"),
+      volume_ml = coalesce(volume_cuilleres,
+                           num(str_extract(libelle_sans_doseur, "\\d+(?:[.,]\\d+)?(?=\\s*ml\\b)"))),
       masse_g   = num(str_extract(libelle, "(?<=de\\s)\\d+(?:[.,]\\d+)?(?=\\s*g\\b)")),
       # l'ancien nb_unites n'est gardé que s'il ne vient pas d'un "de X g" / "de X ml"
       nb_unites_ok = if_else(
@@ -393,7 +425,7 @@ build_ref_dosage <- function(ref_cip, cips = NULL) {
           str_detect(libelle, paste0("de\\s+", nb_unites_old, "(?:[.,]\\d+)?\\s*(?:g|ml|mg)\\b")),
         NA_real_, nb_unites_old)
     ) %>%
-    select(-m_prod)
+    select(-m_prod, -m_cuill, -libelle_sans_doseur)
 
   base <- presentation %>%
     left_join(reference, by = "cip13_clean") %>%
@@ -401,6 +433,10 @@ build_ref_dosage <- function(ref_cip, cips = NULL) {
       semi_solide = !is.na(ref_g) & !is.na(masse_g) &
         str_detect(paste(forme, coalesce(ref_norm, "")), "pommade|crème|creme|gel\\b|pâte|pate|onguent"),
       forme_liquide = str_detect(forme, "suspension|solution|sirop|émulsion|emulsion|collyre|buvable|injectable|gouttes"),
+      ref_per_unit  = ref_per_unit_mot | (ref_seringue & str_detect(forme, "inject|perfus")),
+      # Garde-fou : un flacon buvable multidose contient plus d'une dose de référence
+      volume_ml = if_else(!is.na(ref_ml) & !is.na(volume_ml) & volume_ml <= ref_ml &
+                            str_detect(forme, "buvable"), NA_real_, volume_ml),
       base_contenant = !is.na(ref_ml) | semi_solide |
         str_detect(coalesce(ref_norm, ""), mots_contenants),
       unit_count_per_box = coalesce(
@@ -567,6 +603,32 @@ build_theriaque_dosage <- function(theriaque, cips = NULL, ddd_unit_default = NA
     distinct(cip13_clean, .keep_all = TRUE)
 }
 
+#' CIP13 de forme topique (BDPM, Thériaque, libellé) : tibble(cip13_clean, motif)
+.cips_exclus <- function(data_clean, bdpm_dose, th_dose,
+                         exclude_forme_pharma = .default_topiques,
+                         exclude_label_regex = .default_topiques_label) {
+  excluded <- tibble(cip13_clean = character(), motif = character())
+  if (!is.null(exclude_forme_pharma)) {
+    rx <- paste0("(?i)\\b(?:", paste(exclude_forme_pharma, collapse = "|"), ")")
+    excluded <- bind_rows(
+      bdpm_dose %>% filter(str_detect(.ascii(coalesce(forme_pharmaceutique, "")), rx)) %>%
+        transmute(cip13_clean, motif = paste("bdpm :", forme_pharmaceutique)),
+      th_dose %>% filter(str_detect(.ascii(coalesce(libelle_long, "")), rx)) %>%
+        transmute(cip13_clean, motif = paste("theriaque :", libelle_long))
+    )
+  }
+  if (!is.null(exclude_label_regex)) {
+    excluded <- bind_rows(
+      excluded,
+      data_clean %>%
+        distinct(cip13_clean, nom_court) %>%
+        filter(str_detect(.ascii(str_to_upper(coalesce(nom_court, ""))), exclude_label_regex)) %>%
+        transmute(cip13_clean, motif = paste("nom_court :", nom_court))
+    )
+  }
+  excluded
+}
+
 # Valeur unique par ATC : renvoie la valeur si tous les CIP résolus de l'ATC
 # (au moins `min_cip`) ont la même, sinon NA
 .valeur_unique_atc <- function(df, value_col, unit_col, min_cip = 2) {
@@ -631,25 +693,7 @@ add_dosage_info <- function(data, ref_cip, strict = c("error", "warn", "none"),
   th_dose   <- build_theriaque_dosage(refs$theriaque, cips = cips, ddd_unit_default = ddd_unit_default)
 
   # 3. Exclusion des formes topiques
-  excluded <- tibble(cip13_clean = character(), motif = character())
-  if (!is.null(exclude_forme_pharma)) {
-    rx <- paste0("(?i)\\b(?:", paste(exclude_forme_pharma, collapse = "|"), ")")
-    excluded <- bind_rows(
-      bdpm_dose %>% filter(str_detect(.ascii(coalesce(forme_pharmaceutique, "")), rx)) %>%
-        transmute(cip13_clean, motif = paste("bdpm :", forme_pharmaceutique)),
-      th_dose %>% filter(str_detect(.ascii(coalesce(libelle_long, "")), rx)) %>%
-        transmute(cip13_clean, motif = paste("theriaque :", libelle_long))
-    )
-  }
-  if (!is.null(exclude_label_regex)) {
-    excluded <- bind_rows(
-      excluded,
-      data_clean %>%
-        distinct(cip13_clean, nom_court) %>%
-        filter(str_detect(.ascii(str_to_upper(coalesce(nom_court, ""))), exclude_label_regex)) %>%
-        transmute(cip13_clean, motif = paste("nom_court :", nom_court))
-    )
-  }
+  excluded <- .cips_exclus(data_clean, bdpm_dose, th_dose, exclude_forme_pharma, exclude_label_regex)
   excluded <- data_clean %>%
     filter(cip13_clean %in% excluded$cip13_clean) %>%
     group_by(cip13, cip13_clean) %>%
@@ -689,7 +733,8 @@ add_dosage_info <- function(data, ref_cip, strict = c("error", "warn", "none"),
   # 6. Assemblage
   bdpm_join <- bdpm_dose %>%
     select(cip13_clean, count_ref = unit_count_per_box, dose_ref_ft = unit_dose, unit_ref_ft = dose_unit,
-           dose_ref_sa = unit_dose_sa, unit_ref_sa = dose_unit_sa, conc_ref = conc_per_ml, conc_unit_ref = conc_unit)
+           dose_ref_sa = unit_dose_sa, unit_ref_sa = dose_unit_sa, conc_ref = conc_per_ml, conc_unit_ref = conc_unit,
+           forme_bdpm = forme_pharmaceutique)
 
   res <- data_clean %>%
     left_join(bdpm_join,  by = "cip13_clean") %>%
@@ -772,7 +817,7 @@ add_dosage_info <- function(data, ref_cip, strict = c("error", "warn", "none"),
     ) %>%
     select(-v_atc, -u_atc, -impute) %>%
     select(-c(count_ref, dose_ref_ft, unit_ref_ft, dose_ref_sa, unit_ref_sa, conc_ref, conc_unit_ref,
-              use_sa, dose_ref, unit_ref, conc_vol, conc_vol_unit, dose_corr_vol,
+              use_sa, dose_ref, unit_ref, forme_bdpm, conc_vol, conc_vol_unit, dose_corr_vol,
               count_th, dose_th, unit_th, count_label, dose_label, unit_label, conc_label, conc_unit_label,
               count_corr, dose_corr, unit_corr, volume_corr))
 

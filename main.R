@@ -31,12 +31,6 @@ ref_cip <- GET_dose_bdd(
 result_medoc <- parse_medicam_files(liste_atc = liste_atc)
 
 
-ecarts <- check_label_parser(result_medoc, ref_cip)
-res <- add_dosage_info(result_medoc, ref_cip, strict = "warn")
-print(attr(res, "unparsed"),n= 500)
-
-
-
 
 result_medoc_dosage <- add_dosage_info(
   data = result_medoc, 
