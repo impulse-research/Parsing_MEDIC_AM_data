@@ -1,0 +1,26 @@
+code_atc,molecule,actif,commentaire
+N05AH04,quetiapine,TRUE,
+N06AB06,sertraline,TRUE,
+N06AX16,venlafaxine,TRUE,
+N07CA04,acetylleucine,TRUE,
+C10AX13,evolocumab,TRUE,
+S01CA01,dexamethasone et anti-infectieux,TRUE,uniquement formes ophtalmiques : entierement exclu par le filtre des topiques
+L01BC02,fluorouracile,TRUE,cremes exclues par le filtre des topiques ; reste l'injectable
+H02AB06,prednisolone,TRUE,
+H02AB07,prednisone,TRUE,
+N06BA04,methylphenidate,TRUE,
+C03DA01,spironolactone,TRUE,
+C03EA04,altizide et epargneurs potassiques,TRUE,
+C07AB03,atenolol,TRUE,
+C07FB03,atenolol et autres antihypertenseurs,TRUE,
+C09CA03,valsartan,TRUE,
+C09DB01,valsartan et amlodipine,TRUE,
+C09DA03,valsartan et diuretiques,TRUE,
+N03AA03,primidone,TRUE,
+N03AG06,tiagabine,TRUE,
+N04BA02,levodopa et inhibiteur de la decarboxylase,TRUE,
+N03AG01,acide valproique,TRUE,
+N04BA03,"levodopa, inhibiteur de la decarboxylase et inhibiteur de la COMT",TRUE,
+J01CA04,amoxicilline,TRUE,
+J01CR02,amoxicilline et inhibiteur d'enzyme,TRUE,
+N05AN01,lithium,TRUE,ajout 2026-11 ; nb_ddd via config/conversion_ddd.csv

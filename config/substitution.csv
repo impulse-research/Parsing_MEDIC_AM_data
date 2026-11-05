@@ -1,0 +1,4 @@
+code_atc,code_atc_substitut,commentaire
+# Une ligne par couple (ATC suivi, ATC substitut). Les deux ATC doivent etre actifs dans config/atc_interet.csv.
+# Retirer le # pour activer une ligne.
+# J01CA04,J01CR02,amoxicilline -> amoxicilline + acide clavulanique (exemple)

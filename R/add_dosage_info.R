@@ -581,6 +581,20 @@ build_theriaque_dosage <- function(theriaque, cips = NULL, ddd_unit_default = NA
     select(cip13_clean, count_th, dose_th, unit_th, ddd, ddd_unit, libelle_long, atc_th)
 }
 
+#' Lit la table de conversion des DDD (code_atc, unite_ddd, mg_par_unite)
+.read_conversion_ddd <- function(path) {
+  empty <- tibble(code_atc = character(), unite_ddd = character(), mg_par_unite = numeric())
+  if (is.null(path) || !file.exists(path)) return(empty)
+  read_csv(path, col_types = cols(.default = col_character()), comment = "#") %>%
+    transmute(
+      code_atc     = str_squish(code_atc),
+      unite_ddd    = str_to_lower(str_squish(unite_ddd)),
+      mg_par_unite = suppressWarnings(as.numeric(str_replace(mg_par_unite, ",", ".")))
+    ) %>%
+    filter(!is.na(code_atc), !is.na(mg_par_unite)) %>%
+    distinct(code_atc, .keep_all = TRUE)
+}
+
 #' Lit la table de correction manuelle
 .read_correction <- function(correction_path) {
   empty <- tibble(cip13_clean = character(), count_corr = numeric(), dose_corr = numeric(),
@@ -588,7 +602,9 @@ build_theriaque_dosage <- function(theriaque, cips = NULL, ddd_unit_default = NA
   if (is.null(correction_path) || !file.exists(correction_path)) return(empty)
 
   corr <- read_csv(correction_path, col_types = cols(.default = col_character()), comment = "#")
-  if (!"volume_ml" %in% names(corr)) corr$volume_ml <- NA_character_
+  for (col in c("cip13", "unit_count_per_box", "unit_dose", "dose_unit", "volume_ml")) {
+    if (!col %in% names(corr)) corr[[col]] <- NA_character_
+  }
   to_num <- function(x) suppressWarnings(as.numeric(str_replace(x, ",", ".")))
 
   corr %>%
@@ -671,13 +687,16 @@ build_theriaque_dosage <- function(theriaque, cips = NULL, ddd_unit_default = NA
 #' @param exclude_label_regex Regex appliquée à `nom_court` pour les mêmes formes. `NULL` : non utilisée.
 #' @param impute_atc_unique Impute le dosage d'un ATC dont tous les CIP connus ont le même.
 #' @param ddd_unit_default Unité supposée pour une DDD Thériaque sans unité (ex. "g").
+#' @param conversion_ddd_path Table de conversion quand la DDD n'est pas dans l'unité de la dose
+#'   (ex. lithium : DDD en mmol, dose en mg de carbonate). `NULL` : pas de conversion.
 #' @return `data` enrichi. Attributs : `"unparsed"` (CIP non résolus), `"excluded"` (CIP retirés).
 add_dosage_info <- function(data, ref_cip, strict = c("error", "warn", "none"),
                             correction_path = "data/correction_dosage.csv",
                             exclude_forme_pharma = .default_topiques,
                             exclude_label_regex = .default_topiques_label,
                             impute_atc_unique = TRUE,
-                            ddd_unit_default = NA_character_) {
+                            ddd_unit_default = NA_character_,
+                            conversion_ddd_path = "config/conversion_ddd.csv") {
 
   if (is.logical(strict)) strict <- if (isTRUE(strict)) "error" else "none"
   strict <- match.arg(strict)
@@ -868,6 +887,21 @@ add_dosage_info <- function(data, ref_cip, strict = c("error", "warn", "none"),
       )
     ) %>%
     select(-cip13_clean)
+
+  # 10. Conversion de la DDD vers l'unité de la dose (ex. lithium : mmol -> mg)
+  conversion <- .read_conversion_ddd(conversion_ddd_path)
+  if (nrow(conversion) > 0) {
+    res <- res %>%
+      left_join(conversion, by = "code_atc") %>%
+      mutate(
+        nb_ddd = if_else(
+          is.na(nb_ddd) & !is.na(mg_par_unite) & coalesce(ddd_unit == unite_ddd, FALSE) &
+            coalesce(dose_unit == "mg", FALSE),
+          total_dispensed_dose / (ddd * mg_par_unite),
+          nb_ddd)
+      ) %>%
+      select(-unite_ddd, -mg_par_unite)
+  }
 
   attr(res, "unparsed") <- unparsed
   attr(res, "excluded") <- excluded
