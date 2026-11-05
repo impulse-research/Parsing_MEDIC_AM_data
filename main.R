@@ -18,11 +18,24 @@ list.files("R", pattern = "\\.R$", full.names = TRUE) %>%
   walk(source)
 
 
-ref_cip <- GET_dose_bdd(rerun = TRUE, bdd_path = "data/fichier_intermediaire/base_dosage.csv")
+ref_cip <- GET_dose_bdd(
+  rerun = FALSE,#TRUE,
+  bdd_path = "data/fichier_intermediaire/base_dosage.csv",
+  path_to_theriaque = "data/Requete_UCBL_INSERM_U1290_RESHAPE_base_Theriaque_090226.xlsx"
+  )
+
+
 
 # path_x <- iteration_file[1]#"data/M�dic'AM mensuel 2017 - 2eme semestre_tous r�gimes.xls"
 
 result_medoc <- parse_medicam_files(liste_atc = liste_atc)
+
+
+ecarts <- check_label_parser(result_medoc, ref_cip)
+res <- add_dosage_info(result_medoc, ref_cip, strict = "warn")
+print(attr(res, "unparsed"),n= 500)
+
+
 
 
 result_medoc_dosage <- add_dosage_info(
