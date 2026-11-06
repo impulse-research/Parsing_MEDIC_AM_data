@@ -185,6 +185,11 @@ couverture_medicam <- function(base) {
 #' @param covariables Covariables à joindre (voir `join_covariables()`).
 #' @param covariables_agg Règle d'agrégation par covariable (voir `join_covariables()`).
 #' @param calendrier Ajoute `annee`, `mois`, `trimestre`, `semestre`.
+#' @param par_jour Ajoute `nb_jours`, `periode_complete` et `<mesure>_par_jour`
+#'   (mesure / nombre de jours de la période). Le nombre de jours tient compte des
+#'   années bissextiles et ne compte que les mois présents dans Medic'AM : une
+#'   période en cours (ex. trimestre dont seuls 2 mois sont publiés) a
+#'   `periode_complete = FALSE`.
 #' @param format `"long"` (une ligne par série × période) ou `"wide"`
 #'   (une ligne par période, une colonne `<mesure>__<id>` par série).
 #'
@@ -203,6 +208,7 @@ get_medicam_series <- function(base,
                                covariables = NULL,
                                covariables_agg = NULL,
                                calendrier = FALSE,
+                               par_jour = TRUE,
                                format = c("long", "wide")) {
 
   niveau <- match.arg(niveau)
@@ -237,6 +243,14 @@ get_medicam_series <- function(base,
              semestre  = as.integer(ceiling(mois / 6)))
   }
 
+  # Valeurs par jour
+  if (par_jour) {
+    jours <- .jours_par_periode(base, freq)
+    series <- series %>% left_join(jours, by = "date")
+    cols_jour <- intersect(c(mesures, paste0("subst_", mesures)), names(series))
+    for (m in cols_jour) series[[paste0(m, "_par_jour")]] <- series[[m]] / series$nb_jours
+  }
+
   attr(series, "niveau")  <- niveau
   attr(series, "freq")    <- freq
   attr(series, "mesures") <- mesures
@@ -253,6 +267,22 @@ get_medicam_series <- function(base,
   attr(series, "freq")    <- freq
   attr(series, "mesures") <- mesures
   series
+}
+
+# Nombre de jours par période, à partir des mois réellement présents dans la base
+# (années bissextiles incluses : jours du mois = début du mois suivant - début du mois)
+.jours_par_periode <- function(base, freq) {
+  mois_attendus <- c(mois = 1, trimestre = 3, semestre = 6, annee = 12)[[freq]]
+  base %>%
+    distinct(annee = as.integer(annee), mois = as.integer(mois)) %>%
+    mutate(
+      debut_mois = as.Date(sprintf("%04d-%02d-01", annee, mois)),
+      fin_mois   = as.Date(sprintf("%04d-%02d-01", annee + (mois == 12), mois %% 12 + 1)),
+      jours      = as.integer(fin_mois - debut_mois),
+      date       = .date_periode(annee, mois, freq)
+    ) %>%
+    group_by(date) %>%
+    summarise(nb_jours = sum(jours), periode_complete = n() == mois_attendus, .groups = "drop")
 }
 
 # Agrège, renomme et complète les séries d'un niveau donné
@@ -345,12 +375,14 @@ get_medicam_series <- function(base,
 .series_wide <- function(series) {
   cles_date <- attr(series, "covariables_date") %||% character()
   valeurs <- setdiff(names(series), c("id", "libelle", "code_atc", "periode", "date", "dose_unit", "subst_atc",
-                                      cles_date, "annee", "mois", "trimestre", "semestre"))
+                                      cles_date, "annee", "mois", "trimestre", "semestre",
+                                      "nb_jours", "periode_complete"))
   valeurs <- valeurs[vapply(series[valeurs], is.numeric, logical(1))]
   large <- series %>%
     select(id, periode, date, all_of(valeurs)) %>%
     tidyr::pivot_wider(names_from = id, values_from = all_of(valeurs), names_glue = "{.value}__{id}")
-  communes <- intersect(c("annee", "mois", "trimestre", "semestre", cles_date), names(series))
+  communes <- intersect(c("nb_jours", "periode_complete", "annee", "mois", "trimestre", "semestre", cles_date),
+                        names(series))
   if (length(communes) > 0) {
     large <- large %>% left_join(series %>% distinct(date, across(all_of(communes))), by = "date")
   }

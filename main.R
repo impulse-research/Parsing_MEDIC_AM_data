@@ -19,10 +19,15 @@ base <- build_medicam_base(
 # -----------------------------------------------------------------------------
 # 2. Séries pour les modèles
 # -----------------------------------------------------------------------------
-series_atc_mois <- get_medicam_series(base, niveau = "atc", freq = "mois")
-series_cip_trim <- get_medicam_series(base, niveau = "cip", freq = "trimestre")
+# Séries ATC au mois, au trimestre et au semestre (lues par le dépôt de modélisation)
+# Chaque série contient aussi nb_jours, periode_complete et <mesure>_par_jour
+series_atc <- c("mois", "trimestre", "semestre") %>%
+  set_names() %>%
+  map(~ get_medicam_series(base, niveau = "atc", freq = .x))
+walk(series_atc, write_medicam_series)   # outpout/series/atc_<freq>.{rds,csv,_metadata.json}
+series_atc_mois <- series_atc$mois
 
-write_medicam_series(series_atc_mois)   # outpout/series/atc_mois.{rds,csv,_metadata.json}
+series_cip_trim <- get_medicam_series(base, niveau = "cip", freq = "trimestre")
 write_medicam_series(series_cip_trim)   # outpout/series/cip_trimestre.{rds,csv,_metadata.json}
 
 # Export historique (même colonnes qu'avant : code_atc, classe_atc, periode, nb_boite)

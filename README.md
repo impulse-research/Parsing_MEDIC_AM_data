@@ -185,6 +185,7 @@ get_medicam_series(
   substitution = FALSE,          # colonnes subst_* depuis config/substitution.csv
   covariables  = NULL,           # voir section 4
   calendrier   = FALSE,          # ajoute annee, mois, trimestre, semestre
+  par_jour     = TRUE,           # ajoute nb_jours, periode_complete, <mesure>_par_jour
   format       = "long"          # ou "wide"
 )
 ```
@@ -221,6 +222,9 @@ get_medicam_series(base, niveau = "atc", freq = "mois", mesures = "nb_boite", fo
 | `nb_ddd` | Nombre de DDD |
 | `pct_boites_dose`, `pct_boites_ddd` | Part des boîtes de la période dont la dose (ou la DDD) est connue. **À vérifier avant d'utiliser une mesure de dose :** une couverture inférieure à 1 signifie que la somme est sous-estimée. |
 | `subst_atc`, `subst_<mesure>` | Si `substitution = TRUE` : codes des substituts et somme de leurs mesures |
+| `nb_jours` | Si `par_jour = TRUE` : nombre de jours de la période, en ne comptant que les mois présents dans Medic'AM (février 28 ou 29 jours, trimestre 90 à 92 jours) |
+| `periode_complete` | `FALSE` si un mois de la période manque, par exemple un trimestre dont seuls 2 mois sont publiés |
+| `<mesure>_par_jour` | Mesure / `nb_jours` (ex. `nb_boite_par_jour`, `nb_ddd_par_jour`, `subst_nb_boite_par_jour`). Gomme l'écart de longueur entre périodes. |
 
 Attributs : `attr(series, "niveau")`, `"freq"` et `"mesures"`.
 
@@ -229,6 +233,11 @@ Attributs : `attr(series, "niveau")`, `"freq"` et `"mesures"`.
 * **Niveau ATC :** toutes les périodes de la plage sont présentes. Une période sans dispensation vaut **0**.
 * **Niveau CIP :** **0** entre la première et la dernière période où le CIP figure dans Medic'AM, **NA** en dehors. Ainsi, « pas encore commercialisé » ou « retiré » ne se confond pas avec une pénurie.
 * Une dose inconnue (NA) dans une période existante reste NA : seules les périodes absentes sont mises à 0.
+
+### Valeurs par jour (`par_jour = TRUE`)
+
+* Une boîte par jour en février (28 jours) et en mars (31 jours) n'a pas le même total mensuel. Les colonnes `_par_jour` rendent les périodes comparables.
+* Le nombre de jours est calculé par différence de dates, ce qui gère les années bissextiles. Il ne compte que les mois effectivement publiés : la dernière période, si elle est en cours, n'est donc pas sous-estimée. Elle est signalée par `periode_complete = FALSE`.
 
 ### Format large (`format = "wide"`)
 
@@ -290,6 +299,14 @@ plot_medicam_series(series, mesure = "nb_ddd", dir = "outpout/plots_atc")
 ```
 
 Le fichier `_metadata.json` indique la date d'écriture, le niveau, la fréquence, les mesures, le nombre de séries, la plage de dates et les colonnes.
+
+### Séries écrites par `main.R`
+
+`main.R` écrit les séries ATC au mois, au trimestre et au semestre dans `outpout/series/` (`atc_mois.rds`, `atc_trimestre.rds`, `atc_semestre.rds`, chacune avec son CSV et son `_metadata.json`), ainsi que `cip_trimestre`. Un autre dépôt, par exemple celui de modélisation, peut les lire directement :
+
+```r
+series_mois <- readRDS("../Parsing_MEDIC_AM_data/outpout/series/atc_mois.rds")
+```
 
 ### Brancher un modèle (ex. `test_modele.R`)
 
